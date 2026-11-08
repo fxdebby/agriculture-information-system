@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agriculture Information System</title>
+<script>try{var t=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light");document.documentElement.setAttribute("data-bs-theme",t)}catch(e){}</script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bs-primary:#2f6b3f;--bs-primary-rgb:47,107,63;--bs-link-color:#2f6b3f;--bs-link-hover-color:#1f4d2c;--bs-body-font-family:"Public Sans",system-ui,sans-serif;
+  --bg:#f2f5f0;--ink:#1c2b21;--panel:#fff;--line:#dde5da;--track:#e6ebe3;--nav:#1c2b21;--link:#2f6b3f;--gold:#d9a73a;--lift:rgba(28,43,33,.14);--rowhover:rgba(47,107,63,.08)}
+[data-bs-theme=dark]{--bg:#0f1a13;--ink:#e3ece5;--panel:#17251c;--line:#2b3d31;--track:#223328;--nav:#0a120d;--link:#7fc48f;--lift:rgba(0,0,0,.45);--rowhover:rgba(127,196,143,.10);
+  --bs-body-bg:#17251c;--bs-body-color:#e3ece5;--bs-border-color:#2b3d31;--bs-link-color:#7fc48f;--bs-link-hover-color:#a6dcb1}
+body{background:var(--bg);color:var(--ink);transition:background-color .3s ease,color .3s ease}
+a{transition:color .2s ease}
+h1.h3{letter-spacing:-.01em}
+
+/* buttons: lift on hover, press on click */
+.btn{transition:transform .15s ease,box-shadow .2s ease,background-color .2s ease,border-color .2s ease,color .2s ease}
+.btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 4px 10px var(--lift)}
+.btn:active:not(:disabled){transform:translateY(0);box-shadow:none}
+.btn-primary{--bs-btn-bg:#2f6b3f;--bs-btn-border-color:#2f6b3f;--bs-btn-hover-bg:#265a34;--bs-btn-hover-border-color:#265a34;--bs-btn-active-bg:#1f4d2c;--bs-btn-active-border-color:#1f4d2c;--bs-btn-disabled-bg:#2f6b3f;--bs-btn-disabled-border-color:#2f6b3f}
+.btn-outline-primary{--bs-btn-color:var(--link);--bs-btn-border-color:var(--link);--bs-btn-hover-bg:#2f6b3f;--bs-btn-hover-border-color:#2f6b3f;--bs-btn-hover-color:#fff;--bs-btn-active-bg:#265a34;--bs-btn-active-border-color:#265a34;--bs-btn-active-color:#fff}
+
+/* form fields */
+.form-control,.form-select{transition:border-color .2s ease,box-shadow .2s ease,background-color .3s ease}
+.form-control:hover,.form-select:hover{border-color:#5fae72}
+.form-control:focus,.form-select:focus{border-color:#5fae72;box-shadow:0 0 0 .2rem rgba(47,107,63,.3)}
+
+/* top bar */
+.navbar{background:var(--nav);transition:background-color .3s ease}
+.navbar .nav-link{position:relative;transition:color .2s ease}
+.navbar .nav-link::after{content:"";position:absolute;left:.5rem;right:.5rem;bottom:0;height:3px;background:var(--gold);transform:scaleX(0);transform-origin:left;transition:transform .25s ease}
+.navbar .nav-link:hover::after,.navbar .nav-link.active::after{transform:scaleX(1)}
+.navbar .nav-link:hover,.navbar .nav-link.active{color:#fff}
+#who{color:rgba(255,255,255,.8)}#who:hover #wn{color:#fff;text-decoration:underline}
+.av{width:32px;height:32px;border-radius:50%;background:var(--gold);color:#1c2b21;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;overflow:hidden;flex:none;transition:transform .2s ease,box-shadow .2s ease}
+.av img{width:100%;height:100%;object-fit:cover}
+.av-lg{width:84px;height:84px;font-size:1.7rem}
+#who:hover .av{transform:scale(1.1);box-shadow:0 0 0 2px var(--gold)}
+
+/* light / dark switch: sun in light mode, full moon in dark mode */
+.ti{width:36px;height:34px;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.ti svg{width:18px;height:18px;animation:swap .45s ease both}
+.ti .sun{color:#f2b84b}.ti .moon{color:#ece8d0}
+.ti:hover svg{transform:rotate(18deg) scale(1.12);transition:transform .25s ease}
+
+/* cards, panels, tables */
+.stat{background:var(--panel);border:1px solid var(--line);border-left:4px solid #2f6b3f;padding:.9rem 1rem;display:block;text-decoration:none;color:inherit;height:100%;
+  transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,background-color .3s ease}
+.stat b{font-size:1.7rem;display:block;line-height:1.1}
+.stat:hover{border-left-color:var(--gold);color:inherit;transform:translateY(-4px);box-shadow:0 8px 18px var(--lift)}
+.panel{background:var(--panel);border:1px solid var(--line);padding:1rem;transition:background-color .3s ease,border-color .3s ease}
+.table{--bs-table-bg:var(--panel);--bs-table-hover-bg:var(--rowhover)}
+.table tbody tr{transition:background-color .15s ease}
+thead th{font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--bs-secondary-color)}
+th[data-s]{cursor:pointer;transition:color .2s ease}
+th[data-s]:hover{color:var(--link)}
+.seg{display:flex;height:2.2rem;overflow:hidden;background:var(--track)}
+.seg div{min-width:2px;transform-origin:left;animation:grow .7s cubic-bezier(.2,.7,.2,1) both;transition:filter .2s ease}
+.seg div:hover{filter:brightness(1.15)}
+.dot{display:inline-block;width:.7rem;height:.7rem;margin-right:.35rem}
+.modal-content{transition:background-color .3s ease}
+
+/* page and content motion */
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes swap{from{opacity:0;transform:rotate(-70deg) scale(.5)}to{opacity:1;transform:none}}
+#view>*:not(.g-3),#login .panel,.alert{animation:rise .35s ease both}
+#view>.g-3>[class*=col-]{animation:rise .4s ease both}
+#view>.g-3>[class*=col-]:nth-child(2){animation-delay:.05s}
+#view>.g-3>[class*=col-]:nth-child(3){animation-delay:.1s}
+#view>.g-3>[class*=col-]:nth-child(4){animation-delay:.15s}
+#view>.g-3>[class*=col-]:nth-child(5){animation-delay:.2s}
+#tb tr{animation:fade .25s ease both}
+/* ---- extra life: farm scene, card icons, chips, row marker ---- */
+:root{--sky:#3b82c4;--sky-rain:#5b7f9f}
+[data-bs-theme=dark]{--sky:#0d1730;--sky-rain:#0a1124}
+.hero{position:relative;height:150px;overflow:hidden;background:var(--sky)}
+.hero svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.hero-text{position:relative;z-index:1;padding:1.1rem 1.4rem;color:#fff}
+.hero-hi{font-size:1.55rem;font-weight:700;line-height:1.2}
+.hero-sub{opacity:.88}
+#lscene{height:130px}
+.sun{transform-box:fill-box;transform-origin:center;animation:pulse 4s ease-in-out infinite}
+.cloud{animation:drift 22s ease-in-out infinite alternate}
+.cloud.c2{animation-duration:30s;animation-delay:-8s}
+.wheat{transform-box:fill-box;transform-origin:50% 100%;animation:sway 3.2s ease-in-out infinite alternate}
+.wheat.w2{animation-delay:-.8s}.wheat.w3{animation-delay:-1.6s}.wheat.w4{animation-delay:-2.4s}
+@keyframes drift{from{transform:translateX(-50px)}to{transform:translateX(70px)}}
+@keyframes sway{from{transform:rotate(-5deg)}to{transform:rotate(5deg)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+.stat{position:relative}
+.stat .ic{position:absolute;right:.85rem;top:.85rem;width:28px;height:28px;color:var(--link);opacity:.5;transition:transform .3s ease,opacity .3s ease}
+.stat:hover .ic{transform:rotate(-10deg) scale(1.2);opacity:1}
+.chip{display:inline-block;padding:.12rem .6rem;border-radius:999px;font-size:.78rem;font-weight:600;background:var(--track);color:var(--ink);transition:transform .15s ease}
+.table tbody tr:hover .chip{transform:scale(1.07)}
+.chip-planted{background:#dbe7f3;color:#2c4a68}
+.chip-growing,.chip-grade-a{background:#d8ecdc;color:#1f5a30}
+.chip-harvested,.chip-grade-b{background:#f6e8c4;color:#7a5a0e}
+.chip-grade-c{background:#f4e0d3;color:#8a4a1c}
+.chip-failed,.chip-reject{background:#f6d9d3;color:#8f2f1f}
+[data-bs-theme=dark] .chip-planted{background:rgba(138,166,193,.2);color:#b4cde4}
+[data-bs-theme=dark] .chip-growing,[data-bs-theme=dark] .chip-grade-a{background:rgba(127,196,143,.18);color:#9bd8a9}
+[data-bs-theme=dark] .chip-harvested,[data-bs-theme=dark] .chip-grade-b{background:rgba(217,167,58,.2);color:#ecc467}
+[data-bs-theme=dark] .chip-grade-c{background:rgba(214,138,84,.2);color:#e8ac80}
+[data-bs-theme=dark] .chip-failed,[data-bs-theme=dark] .chip-reject{background:rgba(196,85,63,.22);color:#ee9b8b}
+.table tbody td:first-child{position:relative}
+.table tbody td:first-child::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--gold);transform:scaleY(0);transition:transform .2s ease}
+.table tbody tr:hover td:first-child::before{transform:scaleY(1)}
+/* ---- dashboard scene fix + decor ---- */
+.hero{height:auto;min-height:160px}
+.hero-text{text-shadow:0 1px 3px rgba(0,0,0,.4)}
+.hero-tip{margin-top:.35rem;font-size:.88rem;opacity:.92;max-width:34rem}
+.rays{transform-box:fill-box;transform-origin:center;animation:spin 40s linear infinite}
+.bird{animation:fly 38s linear infinite}
+.bird.b2{animation-duration:46s;animation-delay:-14s}.bird.b3{animation-duration:54s;animation-delay:-30s}
+.cloud.c3{animation-duration:26s;animation-delay:-12s}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fly{from{transform:translateX(-80px)}to{transform:translateX(1700px)}}
+.panel h2.h6{display:flex;align-items:center;gap:.5rem}
+.panel h2.h6::before{content:"";flex:none;width:.65rem;height:.65rem;background:var(--gold);border-radius:0 100% 0 100%}
+/* ---- split login page ---- */
+.login{display:flex;min-height:100vh}
+.login-l{flex:1 1 56%;display:flex;flex-direction:column;justify-content:center;gap:1.1rem;padding:clamp(1.5rem,4vw,4rem)}
+.login-r{flex:0 0 min(34rem,42%);display:flex;align-items:center;justify-content:center;padding:2rem;background:var(--panel);border-left:1px solid var(--line);transition:background-color .3s ease}
+.login-card{width:100%;max-width:24rem}
+.brand{display:flex;align-items:center;gap:.65rem;font-weight:700;font-size:1.05rem}
+.logo{width:38px;height:38px;border-radius:50%;background:#2f6b3f;color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:none;transition:transform .3s ease}
+.logo svg{width:20px;height:20px}
+.brand:hover .logo{transform:rotate(-12deg) scale(1.1)}
+.headline{font-size:clamp(2.2rem,4.4vw,3.7rem);font-weight:700;line-height:1.06;letter-spacing:-.025em;margin:0;max-width:34rem}
+.headline em{font-style:normal;color:var(--link)}
+.lead-text{font-size:1.1rem;color:var(--bs-secondary-color);max-width:32rem;margin:0}
+.feat{list-style:none;padding:0;margin:0;display:grid;gap:.5rem}
+.feat li{display:flex;align-items:flex-start;gap:.65rem}
+.feat li::before{content:"";flex:none;width:.7rem;height:.7rem;margin-top:.42rem;background:var(--gold);border-radius:0 100% 0 100%}
+.login-scene{position:relative;max-width:40rem;margin-top:.5rem}
+.login-scene #lscene{min-height:0;height:210px;border-radius:14px}
+.fchip{position:absolute;display:inline-flex;align-items:center;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:.4rem .85rem;font-weight:600;font-size:.85rem;box-shadow:0 6px 16px var(--lift);animation:bob 4.2s ease-in-out infinite;z-index:2}
+.fchip .dot{margin-right:.5rem;border-radius:50%}
+.fchip.f1{top:14%;left:5%}.fchip.f2{top:30%;right:5%;animation-delay:-1.4s}.fchip.f3{bottom:24%;left:30%;animation-delay:-2.8s}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.login-l>*,.login-card{animation:rise .5s ease both}
+.login-l>*:nth-child(2){animation-delay:.06s}.login-l>*:nth-child(3){animation-delay:.12s}.login-l>*:nth-child(4){animation-delay:.18s}.login-l>*:nth-child(5){animation-delay:.24s}
+.login-card{animation-delay:.1s}
+@media (max-width:991px){
+  .login{flex-direction:column}
+  .login-r{flex:none;border-left:0;border-top:1px solid var(--line);padding:2rem 1.25rem}
+  .login-scene,.feat,.lead-text{display:none}
+  .login-l{padding:1.75rem 1.25rem 1.25rem;gap:.8rem}
+}
+/* ---- day / night / rain in the scene ---- */
+.hero{transition:background-color .8s ease}
+.hero.raining{background-color:var(--sky-rain)}
+.dayobj,.nightobj{transition:transform .9s cubic-bezier(.4,0,.2,1),opacity .9s ease}
+.nightobj{transform:translateY(140px);opacity:0}
+[data-bs-theme=dark] .dayobj{transform:translateY(140px);opacity:0}
+[data-bs-theme=dark] .nightobj{transform:none;opacity:1}
+/* before the rain: the sun (day) or moon (night) lifts a little, then sinks behind the hills; it rises again when the rain stops */
+.hero.gloom .dayobj,.hero.raining .dayobj,[data-bs-theme=dark] .hero.gloom .nightobj,[data-bs-theme=dark] .hero.raining .nightobj{transform:translateY(150px);opacity:0;transition:transform 1.3s cubic-bezier(.55,-.45,.7,1),opacity 1.1s ease .15s}
+.moon{transform-box:fill-box;transform-origin:center;animation:pulse 6s ease-in-out infinite}
+.stars{opacity:0;transition:opacity .9s ease}
+[data-bs-theme=dark] .stars{opacity:1}
+.stars circle{animation:twinkle 3s ease-in-out infinite}
+@keyframes twinkle{0%,100%{opacity:.25}50%{opacity:1}}
+.ground{transition:filter .9s ease}
+[data-bs-theme=dark] .ground{filter:brightness(.55) saturate(.9)}
+.cloud{transition:fill .8s ease,opacity .8s ease}
+[data-bs-theme=dark] .cloud{fill:#9fb0d8;opacity:.3}
+.hero.raining .cloud{fill:#b4c0cc;opacity:.95}
+[data-bs-theme=dark] .hero.raining .cloud{fill:#6f7c9c;opacity:.6}
+.bird{transition:opacity .8s ease}
+[data-bs-theme=dark] .bird{opacity:0}
+.firefly{opacity:0}
+[data-bs-theme=dark] .firefly{animation:glow 3.4s ease-in-out infinite}
+@keyframes glow{0%,100%{opacity:.1;transform:translate(0,0)}50%{opacity:1;transform:translate(6px,-8px)}}
+.rain{opacity:0;transition:opacity .7s ease}
+.hero.raining .rain{opacity:1}
+.drop{animation:fall .9s linear infinite;animation-play-state:paused}
+.hero.raining .drop{animation-play-state:running}
+@keyframes fall{from{transform:translate(0,-40px)}to{transform:translate(-60px,190px)}}
+/* ---- layout polish: login ---- */
+:root{--bg2:#e4ece1}
+[data-bs-theme=dark]{--bg2:#0a120d}
+.login-l{gap:1.35rem}
+.login-scene{max-width:50rem;margin-top:.9rem}
+.login-scene #lscene{height:clamp(250px,38vh,360px)}
+.feat{gap:1rem;font-size:1.02rem;line-height:1.5}
+.login-r{background:var(--bg2)}
+.login-card{background:var(--panel);border:1px solid var(--line);box-shadow:0 14px 36px var(--lift);padding:2.25rem 2rem}
+/* ---- layout polish: dashboard ---- */
+#view .hero{min-height:210px}
+#view .hero-text{padding:1.6rem 1.8rem}
+#view .hero-hi{font-size:1.8rem}
+#view>.g-3{--bs-gutter-x:1.5rem;--bs-gutter-y:1.5rem}
+.stat{padding:1.3rem 1.4rem}
+.stat b{margin-bottom:.45rem}
+.panel .table-sm>:not(caption)>*>*{padding:.65rem .6rem}
+.navbar{position:sticky;top:0;z-index:1030;border-bottom:3px solid var(--gold);box-shadow:0 6px 16px var(--lift)}
+main.container{padding-top:2rem!important}
+/* ---- thunder (every second rain) ---- */
+.flash,.bolt{opacity:0;pointer-events:none}
+.hero.thunder .flash{animation:flash 5s linear 1 both}
+.hero.thunder .bolt.k1{animation:bolt1 5s linear 1 both}
+.hero.thunder .bolt.k2{animation:bolt2 5s linear 1 both}
+.hero.thunder>svg{animation:rumble 5s linear 1}
+@keyframes flash{0%,20%{opacity:0}21%{opacity:.8}23%{opacity:.1}25%{opacity:.55}28%{opacity:0}54%{opacity:0}55%{opacity:.9}57%{opacity:.15}59%{opacity:.5}62%{opacity:0}84%{opacity:0}85%{opacity:.7}88%{opacity:0}100%{opacity:0}}
+@keyframes bolt1{0%,20%{opacity:0}21%,27%{opacity:1}28%,84%{opacity:0}85%{opacity:1}88%,100%{opacity:0}}
+@keyframes bolt2{0%,54%{opacity:0}55%,61%{opacity:1}62%,100%{opacity:0}}
+@keyframes rumble{0%,20%{transform:none}22%{transform:translate(-2px,1px)}24%{transform:translate(2px,-1px)}26%{transform:translate(-1px,0)}28%,54%{transform:none}56%{transform:translate(2px,1px)}58%{transform:translate(-2px,0)}60%{transform:translate(1px,-1px)}62%,84%{transform:none}86%{transform:translate(-1px,1px)}88%,100%{transform:none}}
+/* ---- login: fill the space between the text and the sign-in panel ---- */
+.login-l{gap:1.6rem}
+.headline{font-size:clamp(2.4rem,4.7vw,4.5rem);max-width:48rem}
+.lead-text{font-size:1.2rem;max-width:44rem}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(11.5rem,1fr));gap:1rem;max-width:72rem;font-size:1rem}
+.fcard{display:flex;align-items:flex-start;gap:.85rem;background:var(--panel);border:1px solid var(--line);padding:1rem 1.1rem;transition:transform .2s ease,box-shadow .2s ease,border-color .2s ease,background-color .3s ease}
+.fcard:hover{transform:translateY(-3px);border-color:var(--gold);box-shadow:0 8px 18px var(--lift)}
+.fcard b{display:block;margin-bottom:.15rem}
+.fcard span{display:block;color:var(--bs-secondary-color);font-size:.92rem;line-height:1.4}
+.fic{flex:none;width:40px;height:40px;border-radius:50%;background:var(--track);color:var(--link);display:inline-flex!important;align-items:center;justify-content:center;transition:transform .25s ease}
+.fic svg{width:22px;height:22px}
+.fcard:hover .fic{transform:rotate(-10deg) scale(1.12)}
+.login-scene{max-width:72rem;width:100%;margin-top:.3rem}
+.login-scene #lscene{height:clamp(280px,40vh,430px)}
+.fchip.f4{top:9%;right:24%;animation-delay:-.7s}
+/* ---- show / hide password ---- */
+.pw-wrap{position:relative}
+.pw-wrap .form-control{padding-right:3.2rem}
+.pw-toggle{position:absolute;right:.55rem;top:50%;transform:translateY(-50%);width:40px;height:40px;border:0;border-radius:50%;background:transparent;color:var(--bs-secondary-color);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:5;transition:background-color .2s ease,color .2s ease}
+.pw-toggle:hover{background:var(--track);color:var(--link)}
+.pw-toggle:focus-visible{outline:2px solid #5fae72;outline-offset:1px}
+.pw-toggle[aria-pressed=true]{color:var(--link)}
+.pw-toggle svg{width:22px;height:22px;animation:blink .28s ease both}
+@keyframes blink{from{transform:scaleY(.15);opacity:.4}to{transform:none;opacity:1}}
+input::-ms-reveal,input::-ms-clear{display:none}
+/* ---- clickable status bar + details panel ---- */
+.seg div[data-sid]{cursor:pointer}
+.seg div[data-sid]:focus-visible{outline:2px solid #fff;outline-offset:-3px}
+.lg{cursor:pointer;transition:transform .15s ease}
+.lg:hover{transform:translateY(-1px);text-decoration:underline}
+.lg:focus-visible{outline:2px solid #5fae72;outline-offset:3px}
+.mini{background:var(--track);padding:.8rem .9rem;text-align:center;font-size:.85rem;color:var(--bs-secondary-color)}
+.mini b{display:block;font-size:1.5rem;color:var(--ink);line-height:1.2}
+#st .dot{width:.85rem;height:.85rem;margin-right:.55rem}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+@media print{.navbar,#msg,.row.g-2,.btn{display:none!important}}
+</style>
+</head>
+<body>
+<div id="login" class="d-none">
+  <div class="login">
+    <section class="login-l">
+      <div class="brand"><span class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19l8-8"/></svg></span>Agriculture Information System</div>
+      <h1 class="headline">Every farm, crop and harvest <em>in one place.</em></h1>
+      <p class="lead-text">Keep farmer, farm, planting and harvest records organized, searchable and ready for reports.</p>
+      <div class="feat">
+        <div class="fcard"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21V11"/><path d="M12 11C12 7 9 5 5 5c0 4 3 6 7 6z"/><path d="M12 14c0-3 2-5 6-5 0 3-2 5-6 5z"/></svg></span><div><b>Plantings</b><span>Follow every planting from seed to harvest</span></div></div>
+        <div class="fcard"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10h18l-2 10H5z"/><path d="M8 10l3-6M16 10l-3-6"/></svg></span><div><b>Harvests</b><span>See harvest totals and estimated value at a glance</span></div></div>
+        <div class="fcard"><span class="fic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></svg></span><div><b>Access</b><span>Separate access for administrators and staff</span></div></div>
+      </div>
+      <div class="login-scene">
+        <div id="lscene" class="hero"></div>
+        <span class="fchip f1"><i class="dot" style="background:#2f6b3f"></i>Rice &middot; Growing</span>
+        <span class="fchip f2"><i class="dot" style="background:#d9a73a"></i>900 kg &middot; Grade A</span>
+        <span class="fchip f4"><i class="dot" style="background:#7a6a99"></i>6 reports ready</span>
+        <span class="fchip f3"><i class="dot" style="background:#8aa6c1"></i>15 farmers registered</span>
+      </div>
+    </section>
+    <section class="login-r">
+      <div class="login-card">
+        <h2 class="h3 mb-1">Sign in to Agriculture IS</h2>
+        <p class="text-muted mb-4">Use the email and password from your administrator.</p>
+        <form id="lf">
+          <div id="le"></div>
+          <div class="form-floating mb-3"><input id="em" type="email" class="form-control" placeholder="Email address" required autocomplete="username"><label for="em">Email address</label></div>
+          <div class="form-floating mb-3 pw-wrap"><input id="pw" type="password" class="form-control" placeholder="Password" required autocomplete="current-password"><label for="pw">Password</label><button id="pwt" type="button" class="pw-toggle" aria-pressed="false" title="Show password"></button></div>
+          <button class="btn btn-primary btn-lg w-100">Sign in</button>
+        </form>
+        <hr class="my-4">
+        <p class="small text-muted mb-0">No account yet? Ask your administrator to create one for you.</p>
+      </div>
+    </section>
+  </div>
+</div>
+
+<div id="app" class="d-none">
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <a class="navbar-brand fw-bold" href="#dashboard">Agriculture IS</a>
+      <button class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#nv"><span class="navbar-toggler-icon"></span></button>
+      <div id="nv" class="collapse navbar-collapse">
+        <ul class="navbar-nav me-auto">
+          <li><a class="nav-link" data-r="dashboard" href="#dashboard">Dashboard</a></li>
+          <li><a class="nav-link" data-r="farmers" href="#farmers">Farmers</a></li>
+          <li><a class="nav-link" data-r="farms" href="#farms">Farms</a></li>
+          <li><a class="nav-link" data-r="crops" href="#crops">Crops</a></li>
+          <li><a class="nav-link" data-r="plantings" href="#plantings">Plantings</a></li>
+          <li><a class="nav-link" data-r="harvests" href="#harvests">Harvests</a></li>
+          <li><a class="nav-link" data-r="reports" href="#reports">Reports</a></li>
+        </ul>
+        <a id="who" href="#profile" class="navbar-text me-3 d-flex align-items-center gap-2 text-decoration-none" title="My profile"><span id="av" class="av"></span><span id="wn"></span></a>
+        <button id="theme" type="button" class="btn btn-sm btn-outline-light ti me-2"></button>
+        <button id="out" class="btn btn-sm btn-outline-light">Sign out</button>
+      </div>
+    </div>
+  </nav>
+  <main class="container py-4"><div id="msg"></div><div id="view"></div></main>
+</div>
+
+<div class="modal fade" id="fm" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h2 class="modal-title h5" id="ft"></h2><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body" id="fb"></div>
+  <div class="modal-footer"><small id="fa" class="text-muted me-auto"></small><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button><button id="fs" class="btn btn-primary">Save</button></div>
+</div></div></div>
+
+<div class="modal fade" id="dm" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h2 class="modal-title h5">Delete record</h2><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body" id="dt"></div>
+  <div class="modal-footer"><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Keep record</button><button id="dok" class="btn btn-danger">Delete permanently</button></div>
+</div></div></div>
+
+<div class="modal fade" id="sm" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header"><h2 class="modal-title h5 d-flex align-items-center" id="st"></h2><button class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body" id="sb"></div>
+  <div class="modal-footer"><button id="sgo" type="button" class="btn btn-primary me-auto">View all in Plantings</button><button class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+</div></div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.3/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

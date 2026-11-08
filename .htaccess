@@ -1,0 +1,5 @@
+# Apache / XAMPP: open index.php first and keep the helper files private
+DirectoryIndex index.php index.html
+<FilesMatch "^(lib|config\.local)\.php$">
+    Require all denied
+</FilesMatch>

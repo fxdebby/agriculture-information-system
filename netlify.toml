@@ -1,0 +1,12 @@
+# Netlify writes config.js at deploy time from environment variables,
+# so the keys never need to be committed to the repository.
+[build]
+  publish = "."
+  command = '''echo "window.APP_CONFIG={SUPABASE_URL:'$SUPABASE_URL',SUPABASE_ANON_KEY:'$SUPABASE_ANON_KEY'}" > config.js'''
+
+# This host cannot run PHP, so hide the PHP files instead of showing their source.
+[[redirects]]
+  from = "/*.php"
+  to = "/404.html"
+  status = 404
+  force = true
