@@ -3,7 +3,7 @@
 Static web app (HTML, JavaScript, Bootstrap) on a Supabase PostgreSQL database.
 
 ## 1. Database (Supabase SQL Editor)
-The project starts from your instructor's five tables (crop, farmer, farm, planting, harvest) and normalizes them to 3NF.
+The project database consists of five core tables: crop, farmer, farm, planting, and harvest, structured according to the principles of Third Normal Form (3NF).
 1. **Only if those tables are not in your Supabase project yet:** run `database/01_original_tables.sql`.
    It creates them with the sample data. It also works as a reset, because it drops and recreates everything first.
 2. Run `database/02_normalize.sql`. It converts the tables in place to 3NF (keeps all rows), adds the lookup tables,
