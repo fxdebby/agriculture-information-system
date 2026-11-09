@@ -288,22 +288,26 @@ function paintWho() {
   $('#wn').textContent = `${me.name} (${isAdmin() ? 'Administrator' : 'Staff'})`;
   paintAv($('#av'));
 }
-async function square(file) { // centre-crop to a 256 px square JPEG, so files stay small
-  const bmp = await createImageBitmap(file), s = Math.min(bmp.width, bmp.height), c = document.createElement('canvas');
-  c.width = c.height = 256;
-  c.getContext('2d').drawImage(bmp, (bmp.width - s) / 2, (bmp.height - s) / 2, s, s, 0, 0, 256, 256);
-  return new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
-}
 function profile() {
   $('#view').innerHTML = `<h1 class="h3 mb-3">My profile</h1>
     <div class="panel" style="max-width:36rem">
       <div class="d-flex align-items-center gap-3 mb-4"><span id="pav" class="av av-lg"></span>
         <div><div class="fw-bold fs-5" id="pn"></div><div class="text-muted">${esc(me.email)}</div>
-        <span class="badge text-bg-success">${isAdmin() ? 'Administrator' : 'Staff'}</span></div></div>
+        <span class="badge text-bg-success">${isAdmin() ? 'Administrator' : 'Staff'}</span> <span id="pvtag" class="badge text-bg-warning d-none">Preview, not saved yet</span></div></div>
       <div id="pe"></div>
       <h2 class="h6">Profile photo <small class="text-muted fw-normal">(optional)</small></h2>
-      <p class="small text-muted">Without a photo, your initials are shown. JPG, PNG or WebP; it is cropped to a square.</p>
+      <p class="small text-muted">Without a photo, your initials are shown. JPG, PNG or WebP. After choosing a file you can move, zoom and rotate it, and see a live preview before saving.</p>
       <input id="pf" type="file" accept="image/jpeg,image/png,image/webp" class="form-control mb-2">
+      <div id="crop" class="crop d-none"><div class="crop-main">
+        <div class="crop-stage"><canvas id="cv" width="520" height="520" tabindex="0" aria-label="Photo editor. Drag to move the photo, or use the arrow keys."></canvas><div class="crop-ring"></div></div>
+        <div class="crop-side">
+          <div class="small text-muted mb-2">Live preview (not saved yet)</div>
+          <div class="d-flex align-items-center gap-2 mb-3"><canvas id="pv2" class="pvc" width="64" height="64"></canvas><span class="small text-muted">as it will look in the top bar</span></div>
+          <label class="form-label small mb-1" for="zoom">Zoom</label>
+          <input id="zoom" type="range" class="form-range" min="1" max="4" step="0.01" value="1">
+          <div class="d-flex flex-wrap gap-2"><button id="rot" type="button" class="btn btn-outline-secondary btn-sm">Rotate</button><button id="rst" type="button" class="btn btn-outline-secondary btn-sm">Reset</button><button id="cn" type="button" class="btn btn-outline-danger btn-sm">Discard</button></div>
+          <p class="small text-muted mt-2 mb-0">Drag the photo to move it. Use the slider or the mouse wheel to zoom. Nothing is saved until you press Save photo.</p>
+        </div></div></div>
       <div class="d-flex gap-2 mb-4"><button id="pu" type="button" class="btn btn-primary btn-sm">Save photo</button>
         <button id="pr" type="button" class="btn btn-outline-danger btn-sm" ${me.path ? '' : 'disabled'}>Remove photo</button></div>
       <h2 class="h6">Display name</h2>
@@ -324,17 +328,59 @@ function profile() {
     if (/decode|bitmap|source image|could not be (read|decoded)/i.test(m)) return 'That image could not be read. Try a JPG or PNG.';
     return 'The change could not be saved. Please try again.';
   };
-  $('#pu').onclick = async () => {
-    const f = $('#pf').files[0];
-    if (!f) return note('Choose a photo first. You can also leave it empty and keep your initials.', 'info');
-    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) return note('Please choose a JPG, PNG or WebP image.');
-    if (f.size > 8 * 1024 * 1024) return note('That image is too large. Please choose one under 8 MB.');
+  // ----- photo cropper: choose, move, zoom, rotate and preview BEFORE saving -----
+  const V = 260; let cr = null, drag = null; // cr = the photo being edited: {src, w, h, base, z, x, y}
+  const cv = $('#cv'), pv = $('#pv2');
+  const clamp = () => { const s = cr.base * cr.z; cr.x = Math.min(0, Math.max(V - cr.w * s, cr.x)); cr.y = Math.min(0, Math.max(V - cr.h * s, cr.y)); };
+  const drawTo = (c, size, clear = true) => { const x = c.getContext('2d'), k = size / V, s = cr.base * cr.z; if (clear) x.clearRect(0, 0, size, size); x.drawImage(cr.src, cr.x * k, cr.y * k, cr.w * s * k, cr.h * s * k); };
+  const preview = () => { if (!cr) return; drawTo(cv, cv.width); drawTo(pv, pv.width); const big = $('#pvbig'); if (big) drawTo(big, big.width); };
+  const startCrop = src => {
+    const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height, base = V / Math.min(w, h);
+    cr = {src, w, h, base, z: 1, x: (V - w * base) / 2, y: (V - h * base) / 2};
+    $('#zoom').value = 1; preview();
+  };
+  const setZoom = z => { const s0 = cr.base * cr.z, cx = (V / 2 - cr.x) / s0, cy = (V / 2 - cr.y) / s0; cr.z = z; const s1 = cr.base * z; cr.x = V / 2 - cx * s1; cr.y = V / 2 - cy * s1; clamp(); preview(); };
+  const stopCrop = () => { cr = null; $('#crop').classList.add('d-none'); $('#pvtag').classList.add('d-none'); $('#pf').value = ''; paintAv($('#pav')); };
+  const loadImg = async f => {
+    try { return await createImageBitmap(f); }
+    catch (e) { return await new Promise((ok, no) => { const i = new Image(), u = URL.createObjectURL(f); i.onload = () => { URL.revokeObjectURL(u); ok(i); }; i.onerror = () => no(new Error('could not be read')); i.src = u; }); }
+  };
+  const shrink = src => { // keep the editor quick, even for very large phone photos
+    const w = src.naturalWidth || src.width, h = src.naturalHeight || src.height, k = 1600 / Math.max(w, h);
+    if (k >= 1) return src;
+    const c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k); c.getContext('2d').drawImage(src, 0, 0, c.width, c.height); return c;
+  };
+  $('#pf').onchange = async () => {
+    const f = $('#pf').files[0]; if (!f) return stopCrop();
+    if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { $('#pf').value = ''; return note('Please choose a JPG, PNG or WebP image.'); }
+    if (f.size > 8 * 1024 * 1024) { $('#pf').value = ''; return note('That image is too large. Please choose one under 8 MB.'); }
     try {
-      const blob = await square(f), path = `${me.id}/avatar.jpg`;
-      const up = await sb.storage.from('avatars').upload(path, blob, {upsert: true, contentType: 'image/jpeg'});
+      const src = shrink(await loadImg(f));
+      $('#pe').innerHTML = ''; $('#crop').classList.remove('d-none'); $('#pvtag').classList.remove('d-none');
+      $('#pav').innerHTML = '<canvas id="pvbig" width="168" height="168"></canvas>'; // the big avatar above shows the preview too
+      startCrop(src);
+    } catch (e) { $('#pf').value = ''; note(why(e)); }
+  };
+  cv.onpointerdown = e => { if (!cr) return; drag = {x: e.clientX, y: e.clientY}; if (cv.setPointerCapture) cv.setPointerCapture(e.pointerId); };
+  cv.onpointermove = e => { if (!drag || !cr) return; const f = V / (cv.clientWidth || V); cr.x += (e.clientX - drag.x) * f; cr.y += (e.clientY - drag.y) * f; drag = {x: e.clientX, y: e.clientY}; clamp(); preview(); };
+  cv.onpointerup = cv.onpointercancel = () => { drag = null; };
+  cv.onwheel = e => { if (!cr) return; e.preventDefault(); const z = Math.min(4, Math.max(1, cr.z * (e.deltaY < 0 ? 1.08 : 1 / 1.08))); $('#zoom').value = z; setZoom(z); };
+  cv.onkeydown = e => { const d = {ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10]}[e.key]; if (d && cr) { e.preventDefault(); cr.x += d[0]; cr.y += d[1]; clamp(); preview(); } };
+  $('#zoom').oninput = e => { if (cr) setZoom(+e.target.value); };
+  $('#rot').onclick = () => { if (!cr) return; const c = document.createElement('canvas'); c.width = cr.h; c.height = cr.w; const x = c.getContext('2d'); x.translate(c.width, 0); x.rotate(Math.PI / 2); x.drawImage(cr.src, 0, 0); startCrop(c); };
+  $('#rst').onclick = () => { if (cr) startCrop(cr.src); };
+  $('#cn').onclick = stopCrop;
+  $('#pu').onclick = async () => {
+    if (!cr) return note('Choose a photo first. You can also leave it empty and keep your initials.', 'info');
+    try {
+      const out = document.createElement('canvas'); out.width = out.height = 256;
+      const x = out.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 256, 256); drawTo(out, 256, false);
+      const blob = await new Promise(r => out.toBlob(r, 'image/jpeg', 0.88));
+      if (!blob) throw new Error('could not be read');
+      const path = `${me.id}/avatar.jpg`, up = await sb.storage.from('avatars').upload(path, blob, {upsert: true, contentType: 'image/jpeg'});
       if (up.error) throw up.error;
       await save({avatar_path: path});
-      me.path = path; $('#pf').value = ''; refresh(); note('Photo saved.', 'success');
+      me.path = path; stopCrop(); refresh(); note('Photo saved.', 'success');
     } catch (e) { note(why(e)); }
   };
   $('#pr').onclick = async () => {
@@ -432,7 +478,7 @@ window.onbeforeprint = () => { wasDark = root.getAttribute('data-bs-theme') === 
 window.onafterprint = () => { if (wasDark) root.setAttribute('data-bs-theme', 'dark'); };
 // ---------- sign in: say what really went wrong ----------
 const notConnected = !cfg || !cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY || /YOUR-PROJECT-ID|YOUR-ANON/.test(JSON.stringify(cfg));
-const NOT_REGISTERED = 'No account found with that email address. Check the spelling and try again. If you think this is a mistake, please contact your administrator.';
+const NOT_REGISTERED = 'We could not find an account with that email. Please check the spelling. If you think this is a mistake, contact your administrator.';
 async function badCredentialsMsg(email) { // right email + wrong password, or no such account?
   try { const {data, error} = await sb.rpc('account_exists', {p_email: email}); if (!error && data === false) return NOT_REGISTERED; }
   catch (e) { console.error(e); }
