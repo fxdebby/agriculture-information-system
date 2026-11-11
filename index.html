@@ -256,6 +256,25 @@ input::-ms-reveal,input::-ms-clear{display:none}
 .crop-side{flex:1 1 12rem;min-width:12rem}
 .pvc{width:32px;height:32px;border-radius:50%;background:var(--track);flex:none}
 #pav canvas{width:100%;height:100%;display:block}
+/* ---- requests, accounts, roles ---- */
+.chip-insert,.chip-approved{background:#d8ecdc;color:#1f5a30}
+.chip-update{background:#dbe7f3;color:#2c4a68}
+.chip-delete,.chip-rejected{background:#f6d9d3;color:#8f2f1f}
+.chip-pending{background:#f6e8c4;color:#7a5a0e}
+[data-bs-theme=dark] .chip-insert,[data-bs-theme=dark] .chip-approved{background:rgba(127,196,143,.18);color:#9bd8a9}
+[data-bs-theme=dark] .chip-update{background:rgba(138,166,193,.2);color:#b4cde4}
+[data-bs-theme=dark] .chip-delete,[data-bs-theme=dark] .chip-rejected{background:rgba(196,85,63,.22);color:#ee9b8b}
+[data-bs-theme=dark] .chip-pending{background:rgba(217,167,58,.2);color:#ecc467}
+.rq{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--gold);padding:1rem 1.15rem;margin-bottom:1rem;transition:box-shadow .2s ease,transform .2s ease}
+.rq:hover{box-shadow:0 8px 18px var(--lift);transform:translateY(-2px)}
+.rq-h{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem;margin-bottom:.6rem}
+.ibtn{width:16px;height:16px;margin-right:.4rem;vertical-align:-2px}
+.btn-success{--bs-btn-bg:#2f8a4a;--bs-btn-border-color:#2f8a4a;--bs-btn-hover-bg:#27763e;--bs-btn-hover-border-color:#27763e;--bs-btn-active-bg:#1f6333;--bs-btn-active-border-color:#1f6333}
+.btn-danger{--bs-btn-bg:#c4402f;--bs-btn-border-color:#c4402f;--bs-btn-hover-bg:#a93626;--bs-btn-hover-border-color:#a93626;--bs-btn-active-bg:#8f2e20;--bs-btn-active-border-color:#8f2e20}
+.mem{display:flex;flex-wrap:wrap;align-items:center;gap:.9rem;background:var(--panel);border:1px solid var(--line);padding:.8rem 1rem;margin-bottom:.6rem;transition:box-shadow .2s ease,transform .2s ease}
+.mem:hover{box-shadow:0 6px 14px var(--lift);transform:translateY(-1px)}
+.av-md{width:44px;height:44px;font-size:1rem}
+.grp{text-transform:uppercase;letter-spacing:.05em;font-size:.78rem}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
 @media print{.navbar,#msg,.row.g-2,.btn{display:none!important}}
 </style>
@@ -311,6 +330,8 @@ input::-ms-reveal,input::-ms-clear{display:none}
           <li><a class="nav-link" data-r="plantings" href="#plantings">Plantings</a></li>
           <li><a class="nav-link" data-r="harvests" href="#harvests">Harvests</a></li>
           <li><a class="nav-link" data-r="reports" href="#reports">Reports</a></li>
+          <li><a class="nav-link d-none" data-r="requests" href="#requests">Requests<span id="rqn" class="badge rounded-pill text-bg-danger ms-1 d-none"></span></a></li>
+          <li><a class="nav-link d-none" data-r="accounts" href="#accounts">Accounts</a></li>
         </ul>
         <a id="who" href="#profile" class="navbar-text me-3 d-flex align-items-center gap-2 text-decoration-none" title="My profile"><span id="av" class="av"></span><span id="wn"></span></a>
         <button id="theme" type="button" class="btn btn-sm btn-outline-light ti me-2"></button>
