@@ -5,7 +5,9 @@ const num = (n, d = 0) => Number(n || 0).toLocaleString('en-PH', {minimumFractio
 const money = n => '₱' + num(n, 2);
 const clean = s => s.replace(/[%,()*]/g, ' ');
 const PS = 10; let me = {role_id: 2}, C = {}, S = {};
-const isAdmin = () => me.role_id === 1;
+const ROLE = {1: 'Administrator', 2: 'Staff', 3: 'Moderator'}, RANK = {1: 1, 3: 2, 2: 3};
+const isAdmin = () => me.role_id === 1, isMod = () => me.role_id === 3, isStaff = () => me.role_id === 2, isApprover = () => isAdmin() || isMod();
+const roleBadge = r => `<span class="badge ${r === 1 ? 'text-bg-warning' : r === 3 ? 'text-bg-info' : 'text-bg-secondary'}">${ROLE[r] || 'Staff'}</span>`;
 const FM = new bootstrap.Modal('#fm'), DM = new bootstrap.Modal('#dm');
 
 // ---------- lookups (dropdowns show the label, the database stores the ID) ----------
@@ -72,7 +74,8 @@ function errMsg(e, op) {
   if (e.code === '23503') return op === 'delete' ? 'This record is still used by other records. Remove or reassign them first.' : 'The selected related record no longer exists.';
   if (e.code === '23505') return 'A record with the same unique value already exists.';
   if (e.code === '23514') return /violates check constraint/.test(m) ? 'A value is outside the allowed range.' : m;
-  if (e.code === '42501' || /row-level security/.test(m)) return 'Your role is not allowed to do this.';
+  if (/row-level security|permission denied/.test(m)) return 'Your role is not allowed to do this.';
+  if (e.code === '42501' || e.code === 'P0001') return m; // messages written for people by the database functions
   return 'Something went wrong. Please try again.';
 }
 
@@ -85,6 +88,7 @@ async function list(k) {
   const can = !m.admin || isAdmin();
   $('#view').innerHTML = `
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h1 class="h3 m-0">${m.title}</h1>${can ? `<button class="btn btn-primary" data-a="add">Add ${m.name.toLowerCase()}</button>` : ''}</div>
+    ${isStaff() && can ? '<div class="alert alert-info py-2 mb-3">Your changes are sent to an administrator or moderator for approval before they are applied.</div>' : ''}
     <div class="row g-2 mb-3"><div class="col-12 col-md"><input id="q" class="form-control" placeholder="Search ${m.title.toLowerCase()}" value="${esc(s.q)}"></div>${fl.map(x => `<div class="col-6 col-md-3">${x}</div>`).join('')}</div>
     <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>${m.cols.map(c => `<th data-s="${c[2]}">${c[0]}${s.o === c[2] ? (s.a ? ' ▲' : ' ▼') : ''}</th>`).join('')}<th></th></tr></thead><tbody id="tb"></tbody></table></div>
     <div id="pg" class="d-flex justify-content-between align-items-center"></div>`;
@@ -103,7 +107,7 @@ async function load(k) {
   $('#tb').innerHTML = data.length ? data.map(r => `<tr>${m.cols.map(c => `<td>${cellHtml(c, r)}</td>`).join('')}
     <td class="text-nowrap text-end"><button class="btn btn-sm btn-outline-secondary" data-a="view" data-id="${r[m.pk]}">View</button>
     ${can ? `<button class="btn btn-sm btn-outline-primary" data-a="edit" data-id="${r[m.pk]}">Edit</button>` : ''}
-    ${isAdmin() ? `<button class="btn btn-sm btn-outline-danger" data-a="del" data-id="${r[m.pk]}">Delete</button>` : ''}</td></tr>`).join('')
+    ${can ? `<button class="btn btn-sm btn-outline-danger" data-a="del" data-id="${r[m.pk]}">Delete</button>` : ''}</td></tr>`).join('')
     : `<tr><td colspan="9" class="text-muted py-4">No records match. Clear the search or filters, or add a new record.</td></tr>`;
   const pages = Math.max(1, Math.ceil(count / PS));
   $('#pg').innerHTML = `<small class="text-muted">${count ? `Showing ${(s.p-1)*PS+1}-${Math.min(s.p*PS, count)} of ${count}` : '0 records'}</small>
@@ -121,7 +125,8 @@ async function openForm(k, mode, id) {
       : `<input class="form-control" name="${f.k}" type="${f.t || 'text'}" ${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''} ${f.t === 'number' ? `step="${f.step || 'any'}"` : ''} value="${esc(row[f.k] ?? (mode === 'add' && f.def ? f.def() : ''))}" ${dis}>`;
     return `<div class="col-md-6"><label class="form-label">${f.l}${f.req && !dis ? ' *' : ''}</label>${inp}</div>`;
   }));
-  $('#ft').textContent = {add:'Add', edit:'Edit', view:'View'}[mode] + ' ' + m.name.toLowerCase();
+  $('#ft').textContent = (isStaff() && mode !== 'view' ? {add: 'Request to add', edit: 'Request to edit'}[mode] : {add: 'Add', edit: 'Edit', view: 'View'}[mode]) + ' ' + m.name.toLowerCase();
+  $('#fs').textContent = isStaff() ? 'Submit for approval' : 'Save';
   $('#fb').innerHTML = `<form id="ff" novalidate class="row g-3">${fs.join('')}</form><div id="fe"></div>`;
   $('#fa').textContent = id ? `Created ${new Date(row.created_at).toLocaleString()} | Updated ${new Date(row.updated_at).toLocaleString()}` : '';
   $('#fs').classList.toggle('d-none', mode === 'view');
@@ -145,13 +150,24 @@ async function save(k, id) {
   if (!er.length && m.chk) await m.chk(v, er);
   const box = (t, c = 'danger') => $('#fe').innerHTML = `<div class="alert alert-${c} mt-3 mb-0">${t}</div>`;
   if (er.length) return box(`<ul class="mb-0">${er.map(e => `<li>${esc(e)}</li>`).join('')}</ul>`);
+  if (isStaff()) { // staff never write directly: the change waits for an administrator or moderator
+    const r = await sb.rpc('submit_request', {p_table: m.t, p_action: id ? 'update' : 'insert', p_record: id ? Number(id) : null, p_payload: v});
+    if (r.error) return box(esc(errMsg(r.error, 'save')));
+    FM.hide(); return flash('Request sent. An administrator or moderator will review it.');
+  }
   const {error} = await (id ? sb.from(m.t).update(v).eq(m.pk, id) : sb.from(m.t).insert(v));
   if (error) return box(esc(errMsg(error, 'save')));
   FM.hide(); C = {}; flash(`${m.name} ${id ? 'updated' : 'added'}.`); list(k);
 }
 function del(k, id) {
-  $('#dt').textContent = `Delete this ${M[k].name.toLowerCase()} record? This cannot be undone.`;
+  const staff = isStaff(), what = M[k].name.toLowerCase();
+  $('#dt').textContent = staff ? `Send a request to delete this ${what} record? It is removed only if an administrator or moderator approves.` : `Delete this ${what} record? This cannot be undone.`;
+  $('#dok').textContent = staff ? 'Send delete request' : 'Delete permanently';
   $('#dok').onclick = async () => {
+    if (staff) {
+      const r = await sb.rpc('submit_request', {p_table: M[k].t, p_action: 'delete', p_record: Number(id), p_payload: null});
+      DM.hide(); return r.error ? flash(errMsg(r.error, 'save'), 'danger') : flash('Delete request sent. An administrator or moderator will review it.');
+    }
     const {error} = await sb.from(M[k].t).delete().eq(M[k].pk, id);
     DM.hide(); if (error) return flash(errMsg(error, 'delete'), 'danger');
     C = {}; flash(`${M[k].name} deleted.`); load(k);
@@ -204,6 +220,123 @@ async function openStatus(st, color, tot) {
       : `<p class="text-muted mb-0">No plantings have the status "${esc(st.status)}" yet.</p>`);
   $('#sgo').classList.toggle('d-none', !data.length);
   $('#sgo').onclick = () => { S.plantings = {q: '', f: {status_id: String(st.status_id)}, o: M.plantings.o, a: M.plantings.asc, p: 1}; bootstrap.Modal.getOrCreateInstance(el).hide(); location.hash = '#plantings'; };
+  bootstrap.Modal.getOrCreateInstance(el).show();
+}
+
+// ---------- requests (administrator and moderators) ----------
+const MOD = {farmer: 'farmers', farm: 'farms', planting: 'plantings', harvest: 'harvests'};
+const ACT = {insert: 'Add', update: 'Edit', delete: 'Delete'};
+const ICON_OK = '<svg class="ibtn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>';
+const ICON_NO = '<svg class="ibtn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const stamp = d => d ? new Date(d).toLocaleString() : '';
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+const recName = (t, r) => !r ? '' : t === 'farmer' ? `${r.first_name || ''} ${r.last_name || ''}`.trim() : t === 'farm' ? (r.farm_name || '') : '';
+async function dv(f, v) { // a value, written the way people read it
+  if (v === null || v === undefined || v === '') return '—';
+  if (f.o) { const row = (await opts(f.o)).find(x => x[f.o.id] == v); return row ? f.o.lbl(row) : '#' + v; }
+  return f.t === 'number' ? num(v, 2) : String(v);
+}
+async function reqRows(r) { // what this request would change
+  const m = M[MOD[r.table_name]], pay = r.payload || {}, prev = r.previous || {}, rows = [];
+  for (const f of m.f) {
+    if (r.action === 'insert') { if (f.k in pay) rows.push([f.l, null, await dv(f, pay[f.k])]); }
+    else if (r.action === 'delete') rows.push([f.l, null, await dv(f, prev[f.k])]);
+    else if (f.k in pay) {
+      const num_ = f.t === 'number' || f.o, a_ = prev[f.k], b_ = pay[f.k];
+      if (!(num_ ? Number(a_) === Number(b_) : String(a_ ?? '') === String(b_ ?? ''))) rows.push([f.l, await dv(f, a_), await dv(f, b_)]);
+    }
+  }
+  return rows;
+}
+async function reqCard(r, withButtons) {
+  const rows = await reqRows(r), name = recName(r.table_name, r.action === 'insert' ? r.payload : r.previous);
+  const body = rows.length
+    ? rows.map(x => x[1] === null ? `<tr><td class="text-muted" style="width:34%">${esc(x[0])}</td><td colspan="3">${esc(x[2])}</td></tr>`
+        : `<tr><td class="text-muted" style="width:34%">${esc(x[0])}</td><td class="text-muted">${esc(x[1])}</td><td class="text-center">&rarr;</td><td><b>${esc(x[2])}</b></td></tr>`).join('')
+    : '<tr><td class="text-muted">No visible changes.</td></tr>';
+  const foot = r.status === 'pending' && withButtons
+    ? `<div class="d-flex gap-2"><button type="button" class="btn btn-success btn-sm" data-ok="${r.request_id}" data-act="${r.action}">${ICON_OK}Approve</button><button type="button" class="btn btn-danger btn-sm" data-no="${r.request_id}">${ICON_NO}Reject</button></div>`
+    : `<div class="small"><span class="chip chip-${r.status}">${cap(r.status)}</span>${r.decided_at ? ` by ${esc(r.decided_by_name || 'a removed member')} &middot; ${esc(stamp(r.decided_at))}` : ''}</div>`;
+  return `<div class="rq"><div class="rq-h"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(name)}</span><span class="ms-auto small text-muted">${esc(r.requested_by_name || 'a removed member')} &middot; ${esc(stamp(r.requested_at))}</span></div><div class="table-responsive"><table class="table table-sm mb-2"><tbody>${body}</tbody></table></div>${foot}</div>`;
+}
+async function requests() {
+  const s = S.rq ??= {f: 'pending'};
+  $('#view').innerHTML = '<h1 class="h3 mb-3">Requests</h1><p class="text-muted">Changes sent by staff. Nothing is applied until you approve it.</p><div id="rqf" class="d-flex flex-wrap gap-2 mb-3"></div><div id="rql"><p class="text-muted">Loading...</p></div>';
+  const all = await sb.from('change_request').select('status').limit(5000);
+  const n = {pending: 0, approved: 0, rejected: 0}; (all.data || []).forEach(x => n[x.status]++);
+  $('#rqf').innerHTML = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, l]) => `<button type="button" class="btn btn-sm ${s.f === k ? 'btn-primary' : 'btn-outline-secondary'}" data-rf="${k}">${l}${k !== 'all' ? ` <span class="badge text-bg-light">${n[k]}</span>` : ''}</button>`).join('');
+  document.querySelectorAll('[data-rf]').forEach(b => b.onclick = () => { s.f = b.dataset.rf; requests(); });
+  let q = sb.from('change_request').select('*').order('requested_at', {ascending: s.f === 'pending'}).limit(100);
+  if (s.f !== 'all') q = q.eq('status', s.f);
+  const {data, error} = await q;
+  if (error) { console.error(error); return $('#rql').innerHTML = '<div class="alert alert-danger">The requests could not be loaded. Refresh and try again.</div>'; }
+  await Promise.all(Object.values(L).map(opts)); // so every code can be shown as a name
+  $('#rql').innerHTML = data.length ? (await Promise.all(data.map(r => reqCard(r, true)))).join('') : `<div class="panel text-muted">${s.f === 'pending' ? 'No requests are waiting. You are all caught up.' : 'Nothing here yet.'}</div>`;
+  document.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => decide(b.dataset.ok, true, b.dataset.act));
+  document.querySelectorAll('[data-no]').forEach(b => b.onclick = () => decide(b.dataset.no, false));
+  refreshBadge();
+}
+function decide(id, ok, act) {
+  const go = async () => {
+    const {error} = await sb.rpc('decide_request', {p_id: Number(id), p_approve: ok});
+    if (error) flash(errMsg(error, act === 'delete' ? 'delete' : 'save'), 'danger');
+    else { C = {}; flash(ok ? 'Approved. The change has been applied.' : 'Rejected. Nothing was changed.'); }
+    requests();
+  };
+  if (ok && act === 'delete') { // deleting is permanent, so ask once more
+    $('#dt').textContent = 'Approve this deletion? The record will be removed permanently.'; $('#dok').textContent = 'Approve deletion';
+    $('#dok').onclick = () => { DM.hide(); go(); }; return DM.show();
+  }
+  go();
+}
+async function myRequests() { // staff: what happened to my requests
+  const box = $('#myrq'); if (!box) return;
+  const {data, error} = await sb.from('change_request').select('*').order('requested_at', {ascending: false}).limit(10);
+  if (error) return box.textContent = 'Your requests could not be loaded.';
+  if (!data.length) return box.textContent = 'You have not sent any requests yet.';
+  box.innerHTML = data.map(r => `<div class="d-flex flex-wrap align-items-center gap-2 py-2 border-top"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(recName(r.table_name, r.action === 'insert' ? r.payload : r.previous))}</span><span class="ms-auto d-flex align-items-center gap-2"><span class="chip chip-${r.status}">${cap(r.status)}</span><span class="text-muted">${esc(stamp(r.decided_at || r.requested_at))}</span></span></div>`).join('');
+}
+
+// ---------- accounts (administrator only) ----------
+async function accounts() {
+  $('#view').innerHTML = '<h1 class="h3 mb-3">Accounts</h1><p class="text-muted">The administrator is listed first, then moderators, then staff.</p><div id="acc"><p class="text-muted">Loading...</p></div>';
+  const {data, error} = await sb.from('profiles').select('id,full_name,email,role_id,avatar_path,created_at').limit(500);
+  if (error) { console.error(error); return $('#acc').innerHTML = '<div class="alert alert-danger">The accounts could not be loaded. Refresh and try again.</div>'; }
+  data.sort((x, y) => (RANK[x.role_id] - RANK[y.role_id]) || String(x.created_at).localeCompare(String(y.created_at)));
+  const people = Object.fromEntries(data.map(p => [p.id, p]));
+  const name = p => p.full_name || p.email;
+  const row = p => `<div class="mem"><span class="av av-md" data-av="${p.id}"></span><div class="mem-i"><b>${esc(name(p))}</b>${p.id === me.id ? ' <span class="badge text-bg-light">You</span>' : ''}<div class="small text-muted">${esc(p.email || '')}</div></div>${roleBadge(p.role_id)}
+    <div class="ms-auto d-flex flex-wrap align-items-center gap-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-pv="${p.id}">View profile</button>
+    ${p.role_id === 1 ? '' : `<select class="form-select form-select-sm w-auto" data-rl="${p.id}" aria-label="Role"><option value="3"${p.role_id === 3 ? ' selected' : ''}>Moderator</option><option value="2"${p.role_id === 2 ? ' selected' : ''}>Staff</option></select><button type="button" class="btn btn-sm btn-outline-danger" data-kick="${p.id}">Kick out</button>`}</div></div>`;
+  $('#acc').innerHTML = [[1, 'Administrator'], [3, 'Moderators'], [2, 'Staff']].map(([r, t]) => { const g = data.filter(p => p.role_id === r); return `<h2 class="h6 mt-4 mb-2 grp">${t} <span class="text-muted fw-normal">(${g.length})</span></h2>${g.length ? g.map(row).join('') : '<div class="text-muted small">None yet.</div>'}`; }).join('');
+  data.forEach(p => avatarInto(document.querySelector(`[data-av="${p.id}"]`), name(p), p.avatar_path));
+  document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => openMember(people[b.dataset.pv]));
+  document.querySelectorAll('[data-rl]').forEach(sel => sel.onchange = async () => {
+    const p = people[sel.dataset.rl], {error: e} = await sb.from('profiles').update({role_id: Number(sel.value)}).eq('id', p.id);
+    if (e) { flash(errMsg(e, 'save'), 'danger'); return accounts(); }
+    flash(`${name(p)} is now ${sel.value === '3' ? 'a moderator' : 'staff'}.`); accounts();
+  });
+  document.querySelectorAll('[data-kick]').forEach(b => b.onclick = () => {
+    const p = people[b.dataset.kick];
+    $('#dt').textContent = `Kick out ${name(p)}? Their account is removed and they lose access immediately. This cannot be undone.`; $('#dok').textContent = 'Kick out';
+    $('#dok').onclick = async () => {
+      DM.hide();
+      if (p.avatar_path) await sb.storage.from('avatars').remove([p.avatar_path]);
+      const {error: e} = await sb.rpc('kick_member', {p_id: p.id});
+      if (e) return flash(errMsg(e, 'save'), 'danger');
+      C = {}; flash(`${name(p)} was kicked out.`); accounts();
+    };
+    DM.show();
+  });
+}
+async function openMember(p) { // the administrator can look at anyone's profile
+  const el = $('#sm'); if (!el || !p) return;
+  const {data} = await sb.from('change_request').select('status').eq('requested_by', p.id).limit(5000);
+  const n = {pending: 0, approved: 0, rejected: 0}; (data || []).forEach(x => n[x.status]++);
+  $('#st').textContent = p.full_name || p.email;
+  $('#sb').innerHTML = `<div class="d-flex align-items-center gap-3 mb-3"><span class="av av-lg" id="mav"></span><div><div class="fw-bold fs-5">${esc(p.full_name || p.email)}</div><div class="text-muted">${esc(p.email || '')}</div>${roleBadge(p.role_id)}</div></div>
+    <div class="row g-2"><div class="col-12 col-sm-6"><div class="mini"><b>${esc(new Date(p.created_at).toLocaleDateString())}</b>Joined</div></div><div class="col-12 col-sm-6"><div class="mini"><b>${n.pending} / ${n.approved} / ${n.rejected}</b>Requests: pending / approved / rejected</div></div></div>`;
+  $('#sgo').classList.add('d-none'); avatarInto($('#mav'), p.full_name || p.email, p.avatar_path);
   bootstrap.Modal.getOrCreateInstance(el).show();
 }
 
@@ -266,26 +399,55 @@ function route() {
   const k = location.hash.slice(1) || 'dashboard';
   document.querySelectorAll('[data-r]').forEach(a => a.classList.toggle('active', a.dataset.r === k));
   const nv = $('#nv'); if (nv.classList.contains('show')) bootstrap.Collapse.getOrCreateInstance(nv).hide(); // close the phone menu after a tap
-  $('#msg').innerHTML = ''; (k === 'reports' ? reports : k === 'profile' ? profile : M[k] ? () => list(k) : dash)();
+  $('#msg').innerHTML = ''; (k === 'reports' ? reports : k === 'profile' ? profile : k === 'requests' && isApprover() ? requests : k === 'accounts' && isAdmin() ? accounts : M[k] ? () => list(k) : dash)();
 }
 async function enter(u) {
   let {data, error} = await sb.from('profiles').select('full_name,role_id,avatar_path').eq('id', u.id).single();
-  if (error) ({data} = await sb.from('profiles').select('full_name,role_id').eq('id', u.id).single());
+  if (error && error.code !== 'PGRST116') ({data, error} = await sb.from('profiles').select('full_name,role_id').eq('id', u.id).single());
+  if (error && error.code === 'PGRST116') return removedAccount(); // no profile = the account was kicked out
   me = {id: u.id, email: u.email, name: data?.full_name || u.email, role_id: data?.role_id || 2, path: data?.avatar_path || null};
-  paintWho(); show('app'); route();
+  applyRole(); show('app'); route(); startWatch();
+}
+function applyRole() { // show only what this role may use
+  const r = $('[data-r=requests]'), c = $('[data-r=accounts]');
+  if (r) r.classList.toggle('d-none', !isApprover());
+  if (c) c.classList.toggle('d-none', !isAdmin());
+  paintWho(); refreshBadge();
+}
+async function removedAccount() {
+  clearInterval(watch); await sb.auth.signOut(); C = {}; S = {}; me = {role_id: 2}; location.hash = ''; show('login');
+  $('#le').innerHTML = '<div class="alert alert-danger">This account was removed. If you think this is a mistake, contact your administrator.</div>';
+}
+let watch;
+function startWatch() { // every 45 s: still a member? role changed? new requests?
+  clearInterval(watch);
+  watch = setInterval(async () => {
+    if (!me.id) return;
+    const {data, error} = await sb.from('profiles').select('role_id').eq('id', me.id).maybeSingle();
+    if (error) return;
+    if (!data) return removedAccount();
+    if (data.role_id !== me.role_id) { me.role_id = data.role_id; applyRole(); route(); } else refreshBadge();
+  }, 45000);
+}
+async function refreshBadge() {
+  const b = $('#rqn'); if (!b) return;
+  if (!isApprover()) return b.classList.add('d-none');
+  const {count} = await sb.from('change_request').select('request_id', {count: 'exact', head: true}).eq('status', 'pending');
+  b.textContent = count || ''; b.classList.toggle('d-none', !count);
 }
 
 // ---------- profile photo (optional), name, dark mode ----------
 const initials = n => (String(n).trim().split(/[\s@._-]+/).filter(Boolean).slice(0, 2).map(w => w[0]).join('') || '?').toUpperCase();
-async function paintAv(el) {
-  el.textContent = initials(me.name);
-  if (!me.path) return;
-  const {data} = await sb.storage.from('avatars').createSignedUrl(me.path, 3600);
+async function avatarInto(el, name, path) {
+  el.textContent = initials(name);
+  if (!path) return;
+  const {data} = await sb.storage.from('avatars').createSignedUrl(path, 3600);
   if (data?.signedUrl) el.innerHTML = `<img alt="" src="${esc(data.signedUrl)}">`;
 }
+const paintAv = el => avatarInto(el, me.name, me.path);
 function paintWho() {
   if (!$('#wn') || !$('#av')) return;
-  $('#wn').textContent = `${me.name} (${isAdmin() ? 'Administrator' : 'Staff'})`;
+  $('#wn').textContent = `${me.name} (${ROLE[me.role_id] || 'Staff'})`;
   paintAv($('#av'));
 }
 function profile() {
@@ -293,7 +455,7 @@ function profile() {
     <div class="panel" style="max-width:36rem">
       <div class="d-flex align-items-center gap-3 mb-4"><span id="pav" class="av av-lg"></span>
         <div><div class="fw-bold fs-5" id="pn"></div><div class="text-muted">${esc(me.email)}</div>
-        <span class="badge text-bg-success">${isAdmin() ? 'Administrator' : 'Staff'}</span> <span id="pvtag" class="badge text-bg-warning d-none">Preview, not saved yet</span></div></div>
+        ${roleBadge(me.role_id)} <span id="pvtag" class="badge text-bg-warning d-none">Preview, not saved yet</span></div></div>
       <div id="pe"></div>
       <h2 class="h6">Profile photo <small class="text-muted fw-normal">(optional)</small></h2>
       <p class="small text-muted">Without a photo, your initials are shown. JPG, PNG or WebP. After choosing a file you can move, zoom and rotate it, and see a live preview before saving.</p>
@@ -315,6 +477,7 @@ function profile() {
         <button id="ps" type="button" class="btn btn-primary text-nowrap">Save name</button></div>
     </div>`;
   $('#pn').textContent = me.name; paintAv($('#pav'));
+  if (isStaff()) { $('#view').insertAdjacentHTML('beforeend', '<div class="panel mt-3" style="max-width:36rem"><h2 class="h6">My requests</h2><div id="myrq" class="small text-muted">Loading...</div></div>'); myRequests(); }
   const note = (t, c = 'danger') => $('#pe').innerHTML = `<div class="alert alert-${c}">${esc(t)}</div>`;
   const refresh = () => { paintWho(); paintAv($('#pav')); $('#pn').textContent = me.name; $('#pr').disabled = !me.path; };
   const save = async fields => { const {error} = await sb.from('profiles').update(fields).eq('id', me.id); if (error) throw error; };
@@ -515,7 +678,7 @@ function setPw(show) { // show = true: letters visible, eye open. show = false: 
   b.innerHTML = show ? EYE_OPEN : EYE_SHUT; b.setAttribute('aria-pressed', show); b.title = show ? 'Hide password' : 'Show password'; b.setAttribute('aria-label', b.title);
 }
 if ($('#pwt')) { $('#pwt').onclick = () => { const i = $('#pw'), n = i.type === 'password'; setPw(n); i.focus(); i.setSelectionRange(i.value.length, i.value.length); }; setPw(false); }
-$('#out').onclick = async () => { await sb.auth.signOut(); C = {}; S = {}; me = {role_id: 2}; location.hash = ''; show('login'); setPw(false); };
+$('#out').onclick = async () => { await sb.auth.signOut(); C = {}; S = {}; me = {role_id: 2}; clearInterval(watch); location.hash = ''; show('login'); setPw(false); };
 window.onhashchange = () => !$('#app').classList.contains('d-none') && route();
 $('#view').onclick = e => {
   const b = e.target.closest('[data-a],[data-p],[data-s]'); if (!b) return;
