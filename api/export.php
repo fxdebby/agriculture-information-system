@@ -109,7 +109,7 @@ $safe = static function (mixed $v): string {
     return (!is_numeric($s) && preg_match('/^[=+\-@\t\r]/', $s)) ? "'" . $s : $s;
 };
 header('Content-Type: text/csv; charset=utf-8');
-header('Content-Disposition: attachment; filename="ais-' . $key . '-' . date('Y-m-d') . '.csv"');
+header('Content-Disposition: attachment; filename="cultiva-' . $key . '-' . date('Y-m-d') . '.csv"');
 header('Cache-Control: no-store');
 $out = fopen('php://output', 'w');
 fwrite($out, "\xEF\xBB\xBF"); // lets Excel read the file as UTF-8
