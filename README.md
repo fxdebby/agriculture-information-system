@@ -1,4 +1,4 @@
-# Agriculture Information System
+# Cultiva (Agriculture Information System)
 
 Static web app (HTML, JavaScript, Bootstrap) on a Supabase PostgreSQL database.
 
@@ -9,8 +9,11 @@ The project database consists of five core tables: crop, farmer, farm, planting,
 2. Run `database/02_normalize.sql`. It converts the tables in place to 3NF (keeps all rows), adds the lookup tables,
    constraints, audit columns, login roles, views and security rules. It stops with a clear message if run twice.
 3. Run `database/03_profile_and_photo.sql`. It adds the optional profile photo (a private Supabase Storage bucket) and lets users edit their own name and photo, but never their own role.
-4. Open **Authentication > Users** and add your own user (tick "Auto confirm user").
-5. Make yourself Administrator:
+4. (Optional) Run `database/04_account_check.sql`. It lets the sign-in page say "This account is not registered yet" for an email that has no account. It reveals only yes or no. To switch it off again run `drop function public.account_exists(text);`
+5. Run `database/05_roles_and_requests.sql`. It adds the Moderator role, the approval requests and the kick-out function.
+   It is safe to run again: if you ran an older copy, run this one so staff can also send **crop** requests.
+6. Open **Authentication > Users** and add your own user (tick "Auto confirm user").
+7. Make yourself Administrator:
    `update profiles set role_id = 1 where email = 'your-email@example.com';`
 
 ## 2. Run locally
@@ -23,6 +26,24 @@ The project database consists of five core tables: crop, farmer, farm, planting,
 2. On Netlify choose **Add new site > Import from Git**.
 3. Under **Site settings > Environment variables** add `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 4. Deploy. `netlify.toml` builds `config.js` from those variables.
+
+## Roles and approvals
+- **Administrator** (exactly one): changes records directly, manages crops, sees the **Accounts** page, changes roles
+  and can **kick out** any member.
+- **Moderator** (any number): changes records directly and approves or rejects staff requests (**Requests** tab, next to Reports).
+  Each request card has an X that closes it for that person only (the database keeps it); the Pending / Approved /
+  Rejected / All counts and the red count on the tab go down. Next to the tabs, **Restore N closed** brings them back and,
+  for the administrator only, **Delete N permanently** removes them from the database for good. Both ask "Do you wish to
+  proceed?" first (Yes / No). Permanent delete needs the latest `05_roles_and_requests.sql`.
+- **Staff** (any number): can look at everything, but add / edit / delete are sent as **requests**, for crops as well
+  as farmers, farms, plantings and harvests. Nothing changes until an administrator or moderator approves it.
+  The "changes are sent for approval" notice has an X button and hides itself after 5 seconds. On **My profile**, staff
+  can remove finished entries from their own **My requests** list with the X; this only hides them for that person,
+  and administrators and moderators still see every request in the **Requests** tab.
+
+Setup: run `database/05_roles_and_requests.sql` in the Supabase SQL Editor **before** you deploy the matching app files.
+New accounts you create under Authentication > Users start as Staff; the administrator promotes them on the Accounts page.
+Tip: in Supabase, Authentication > Sign In / Providers, turn off "Allow new users to sign up" so only you can create accounts.
 
 ## PHP part
 The app also ships with a small PHP layer. The screens look and work exactly the same; PHP only adds server-side features.
