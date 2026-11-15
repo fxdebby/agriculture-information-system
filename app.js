@@ -7,8 +7,14 @@ const clean = s => s.replace(/[%,()*]/g, ' ');
 const PS = 10; let me = {role_id: 2}, C = {}, S = {};
 const ROLE = {1: 'Administrator', 2: 'Staff', 3: 'Moderator'}, RANK = {1: 1, 3: 2, 2: 3};
 const isAdmin = () => me.role_id === 1, isMod = () => me.role_id === 3, isStaff = () => me.role_id === 2, isApprover = () => isAdmin() || isMod();
+const canEdit = m => !m.admin || isApprover() || isStaff(); // every role: administrator and moderators change records directly, staff send requests
 const roleBadge = r => `<span class="badge ${r === 1 ? 'text-bg-warning' : r === 3 ? 'text-bg-info' : 'text-bg-secondary'}">${ROLE[r] || 'Staff'}</span>`;
-const FM = new bootstrap.Modal('#fm'), DM = new bootstrap.Modal('#dm');
+const FM = new bootstrap.Modal('#fm'), DM = new bootstrap.Modal('#dm'), CM = new bootstrap.Modal('#cm');
+const confirmBox = text => new Promise(res => { // Yes (green) / No (red); resolves true only on Yes
+  let yes = false; $('#ct').textContent = text;
+  $('#cyes').onclick = () => { yes = true; CM.hide(); };
+  $('#cm').addEventListener('hidden.bs.modal', () => res(yes), {once: true}); CM.show();
+});
 
 // ---------- lookups (dropdowns show the label, the database stores the ID) ----------
 const lk = (t, id, d) => ({t, id, lbl: r => r[d]});
@@ -80,20 +86,27 @@ function errMsg(e, op) {
 }
 
 // ---------- data tables ----------
+let noteDone = false; // approval notice already closed (by X or auto-hide) -> never show it again this session
+function noteSeen() { try { return noteDone || sessionStorage.getItem('approvalNoteSeen') === '1'; } catch (e) { return noteDone; } }
 async function list(k) {
   const m = M[k], s = S[k] ??= {q:'', f:{}, o:m.o, a:m.asc, p:1};
   const fl = await Promise.all(m.filt.map(async f => f.o
     ? `<select class="form-select" data-f="${f.k}"><option value="">All ${f.l.toLowerCase()}</option>${(await opts(f.o)).map(r => `<option value="${r[f.o.id]}"${s.f[f.k] == r[f.o.id] ? ' selected' : ''}>${esc(f.o.lbl(r))}</option>`).join('')}</select>`
     : `<input class="form-control" placeholder="${f.l}" data-f="${f.k}" value="${esc(s.f[f.k] || '')}">`));
-  const can = !m.admin || isAdmin();
+  const can = canEdit(m);
   $('#view').innerHTML = `
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3"><h1 class="h3 m-0">${m.title}</h1>${can ? `<button class="btn btn-primary" data-a="add">Add ${m.name.toLowerCase()}</button>` : ''}</div>
-    ${isStaff() && can ? '<div class="alert alert-info py-2 mb-3">Your changes are sent to an administrator or moderator for approval before they are applied.</div>' : ''}
+    ${isStaff() && can && !noteSeen() ? '<div id="approvalNote" class="alert alert-info alert-dismissible fade show py-2 mb-3" role="alert">Your changes are sent to an administrator or moderator for approval before they are applied.<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button></div>' : ''}
     <div class="row g-2 mb-3"><div class="col-12 col-md"><input id="q" class="form-control" placeholder="Search ${m.title.toLowerCase()}" value="${esc(s.q)}"></div>${fl.map(x => `<div class="col-6 col-md-3">${x}</div>`).join('')}</div>
     <div class="table-responsive"><table class="table table-hover align-middle"><thead><tr>${m.cols.map(c => `<th data-s="${c[2]}">${c[0]}${s.o === c[2] ? (s.a ? ' ▲' : ' ▼') : ''}</th>`).join('')}<th></th></tr></thead><tbody id="tb"></tbody></table></div>
     <div id="pg" class="d-flex justify-content-between align-items-center"></div>`;
   let t; $('#q').oninput = e => { clearTimeout(t); t = setTimeout(() => { s.q = e.target.value.trim(); s.p = 1; load(k); }, 300); };
   document.querySelectorAll('[data-f]').forEach(el => el.oninput = () => { s.f[el.dataset.f] = el.value.trim(); s.p = 1; load(k); });
+  const note = document.getElementById('approvalNote');
+  if (note) {
+    note.addEventListener('closed.bs.alert', () => { try { sessionStorage.setItem('approvalNoteSeen', '1'); } catch (e) { noteDone = true; } noteDone = true; });
+    setTimeout(() => { if (note.isConnected) bootstrap.Alert.getOrCreateInstance(note).close(); }, 5000); // auto-hide after 5s
+  }
   load(k);
 }
 async function load(k) {
@@ -103,7 +116,7 @@ async function load(k) {
   for (const [c, v] of Object.entries(s.f)) if (v) q = m.filt.find(f => f.k === c).o ? q.eq(c, v) : q.ilike(c, `%${clean(v)}%`);
   const {data, count, error} = await q.order(s.o, {ascending:s.a}).range((s.p-1)*PS, s.p*PS-1);
   if (error) { console.error(error); return $('#tb').innerHTML = '<tr><td colspan="9" class="text-danger">Records could not be loaded. Refresh the page and try again.</td></tr>'; }
-  const can = !m.admin || isAdmin();
+  const can = canEdit(m);
   $('#tb').innerHTML = data.length ? data.map(r => `<tr>${m.cols.map(c => `<td>${cellHtml(c, r)}</td>`).join('')}
     <td class="text-nowrap text-end"><button class="btn btn-sm btn-outline-secondary" data-a="view" data-id="${r[m.pk]}">View</button>
     ${can ? `<button class="btn btn-sm btn-outline-primary" data-a="edit" data-id="${r[m.pk]}">Edit</button>` : ''}
@@ -224,13 +237,14 @@ async function openStatus(st, color, tot) {
 }
 
 // ---------- requests (administrator and moderators) ----------
-const MOD = {farmer: 'farmers', farm: 'farms', planting: 'plantings', harvest: 'harvests'};
+const MOD = {farmer: 'farmers', farm: 'farms', crop: 'crops', planting: 'plantings', harvest: 'harvests'};
 const ACT = {insert: 'Add', update: 'Edit', delete: 'Delete'};
 const ICON_OK = '<svg class="ibtn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>';
 const ICON_NO = '<svg class="ibtn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+const isClosed = r => r.closed === true; // closed = hidden from the Requests list; saved in the database, so the administrator and moderators see the same
 const stamp = d => d ? new Date(d).toLocaleString() : '';
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
-const recName = (t, r) => !r ? '' : t === 'farmer' ? `${r.first_name || ''} ${r.last_name || ''}`.trim() : t === 'farm' ? (r.farm_name || '') : '';
+const recName = (t, r) => !r ? '' : t === 'farmer' ? `${r.first_name || ''} ${r.last_name || ''}`.trim() : t === 'farm' ? (r.farm_name || '') : t === 'crop' ? `${r.crop_name || ''}${r.variety ? ` (${r.variety})` : ''}` : '';
 async function dv(f, v) { // a value, written the way people read it
   if (v === null || v === undefined || v === '') return '—';
   if (f.o) { const row = (await opts(f.o)).find(x => x[f.o.id] == v); return row ? f.o.lbl(row) : '#' + v; }
@@ -257,23 +271,55 @@ async function reqCard(r, withButtons) {
   const foot = r.status === 'pending' && withButtons
     ? `<div class="d-flex gap-2"><button type="button" class="btn btn-success btn-sm" data-ok="${r.request_id}" data-act="${r.action}">${ICON_OK}Approve</button><button type="button" class="btn btn-danger btn-sm" data-no="${r.request_id}">${ICON_NO}Reject</button></div>`
     : `<div class="small"><span class="chip chip-${r.status}">${cap(r.status)}</span>${r.decided_at ? ` by ${esc(r.decided_by_name || 'a removed member')} &middot; ${esc(stamp(r.decided_at))}` : ''}</div>`;
-  return `<div class="rq"><div class="rq-h"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(name)}</span><span class="ms-auto small text-muted">${esc(r.requested_by_name || 'a removed member')} &middot; ${esc(stamp(r.requested_at))}</span></div><div class="table-responsive"><table class="table table-sm mb-2"><tbody>${body}</tbody></table></div>${foot}</div>`;
+  return `<div class="rq"><div class="rq-h"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(name)}</span><small class="text-muted">added by: ${esc(r.requested_by_name || 'a removed member')} &middot; ${esc(stamp(r.requested_at))}</small><button type="button" class="btn-close req-x ms-auto" data-close="${r.request_id}" data-st="${r.status}" aria-label="Close this request" title="Close"></button></div><div class="table-responsive"><table class="table table-sm mb-2"><tbody>${body}</tbody></table></div>${foot}</div>`;
 }
 async function requests() {
   const s = S.rq ??= {f: 'pending'};
   $('#view').innerHTML = '<h1 class="h3 mb-3">Requests</h1><p class="text-muted">Changes sent by staff. Nothing is applied until you approve it.</p><div id="rqf" class="d-flex flex-wrap gap-2 mb-3"></div><div id="rql"><p class="text-muted">Loading...</p></div>';
-  const all = await sb.from('change_request').select('status').limit(5000);
-  const n = {pending: 0, approved: 0, rejected: 0}; (all.data || []).forEach(x => n[x.status]++);
-  $('#rqf').innerHTML = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, l]) => `<button type="button" class="btn btn-sm ${s.f === k ? 'btn-primary' : 'btn-outline-secondary'}" data-rf="${k}">${l}${k !== 'all' ? ` <span class="badge text-bg-light">${n[k]}</span>` : ''}</button>`).join('');
+  const all = await sb.from('change_request').select('request_id,status,table_name,closed').limit(5000);
+  if (all.error) { console.error(all.error); return $('#rql').innerHTML = '<div class="alert alert-danger">The Requests page needs the latest database update. Run 05_roles_and_requests.sql in the Supabase SQL Editor, then refresh.</div>'; }
+  const n = {pending: 0, approved: 0, rejected: 0}; (all.data || []).filter(x => MOD[x.table_name] && !isClosed(x)).forEach(x => n[x.status]++);
+  const closedIds = () => (all.data || []).filter(x => MOD[x.table_name] && isClosed(x)).map(x => x.request_id);
+  $('#rqf').innerHTML = [['pending', 'Pending'], ['approved', 'Approved'], ['rejected', 'Rejected'], ['all', 'All']].map(([k, l]) => `<button type="button" class="btn btn-sm ${s.f === k ? 'btn-primary' : 'btn-outline-secondary'}" data-rf="${k}">${l} <span class="badge text-bg-light">${k === 'all' ? n.pending + n.approved + n.rejected : n[k]}</span></button>`).join('') + '<span id="rqx"></span>';
+  const paintClosed = () => {
+    const n = closedIds().length;
+    $('#rqx').innerHTML = n ? `<button type="button" class="btn btn-sm btn-link" id="rqre">Restore ${n} closed</button>${isAdmin() ? `<span class="text-muted">or</span><button type="button" class="btn btn-sm btn-link text-danger" id="rqdel">Delete ${n} permanently</button>` : ''}` : '';
+    if ($('#rqre')) $('#rqre').onclick = async () => {
+      if (!await confirmBox(`Restore ${n} closed request${n > 1 ? 's' : ''}? ${n > 1 ? 'They will' : 'It will'} show in the list again. Do you wish to proceed?`)) return;
+      const {error} = await sb.rpc('close_requests', {p_ids: closedIds(), p_closed: false});
+      if (error) return flash(errMsg(error, 'save'), 'danger');
+      flash(`${n} request${n > 1 ? 's' : ''} restored.`); requests();
+    };
+    if ($('#rqdel')) $('#rqdel').onclick = async () => {
+      const ids = closedIds();
+      if (!await confirmBox(`Permanently delete ${n} closed request${n > 1 ? 's' : ''}? ${n > 1 ? 'They are' : 'It is'} removed for everyone, including the staff member's history, and this cannot be undone. Do you wish to proceed?`)) return;
+      const {error} = await sb.rpc('delete_requests', {p_ids: ids});
+      if (error) return flash(errMsg(error, 'delete'), 'danger');
+      flash(`${n} request${n > 1 ? 's' : ''} permanently deleted.`); requests();
+    };
+  };
+  paintClosed();
   document.querySelectorAll('[data-rf]').forEach(b => b.onclick = () => { s.f = b.dataset.rf; requests(); });
   let q = sb.from('change_request').select('*').order('requested_at', {ascending: s.f === 'pending'}).limit(100);
   if (s.f !== 'all') q = q.eq('status', s.f);
   const {data, error} = await q;
   if (error) { console.error(error); return $('#rql').innerHTML = '<div class="alert alert-danger">The requests could not be loaded. Refresh and try again.</div>'; }
-  await Promise.all(Object.values(L).map(opts)); // so every code can be shown as a name
-  $('#rql').innerHTML = data.length ? (await Promise.all(data.map(r => reqCard(r, true)))).join('') : `<div class="panel text-muted">${s.f === 'pending' ? 'No requests are waiting. You are all caught up.' : 'Nothing here yet.'}</div>`;
+  try {
+    await Promise.all(Object.values(L).map(opts)); // so every code can be shown as a name
+    const known = data.filter(r => MOD[r.table_name] && !isClosed(r)); // skip kinds this version cannot show
+    $('#rql').innerHTML = known.length ? (await Promise.all(known.map(r => reqCard(r, true)))).join('') : `<div class="panel text-muted">${s.f === 'pending' ? 'No requests are waiting. You are all caught up.' : 'Nothing here yet.'}</div>`;
+  } catch (e) { console.error(e); return $('#rql').innerHTML = '<div class="alert alert-danger">The requests could not be shown. Refresh and try again.</div>'; }
   document.querySelectorAll('[data-ok]').forEach(b => b.onclick = () => decide(b.dataset.ok, true, b.dataset.act));
   document.querySelectorAll('[data-no]').forEach(b => b.onclick = () => decide(b.dataset.no, false));
+  document.querySelectorAll('[data-close]').forEach(b => b.onclick = async () => {
+    const {error} = await sb.rpc('close_requests', {p_ids: [Number(b.dataset.close)], p_closed: true});
+    if (error) return flash(errMsg(error, 'save'), 'danger');
+    const x = all.data.find(y => String(y.request_id) === b.dataset.close); if (x) x.closed = true;
+    b.closest('.rq').remove(); paintClosed();
+    [b.dataset.st, 'all'].forEach(k => { const bd = document.querySelector(`[data-rf="${k}"] .badge`); if (bd) bd.textContent = Math.max(0, (+bd.textContent || 0) - 1); }); // 5 -> 4
+    if (!document.querySelector('#rql .rq')) $('#rql').innerHTML = '<div class="panel text-muted">Nothing here yet.</div>';
+    refreshBadge();
+  });
   refreshBadge();
 }
 function decide(id, ok, act) {
@@ -289,12 +335,21 @@ function decide(id, ok, act) {
   }
   go();
 }
+const hiddenKey = () => `hiddenRequests:${me.id}`;
+const hiddenReqs = () => { try { return JSON.parse(localStorage.getItem(hiddenKey()) || '[]'); } catch (e) { return []; } };
 async function myRequests() { // staff: what happened to my requests
   const box = $('#myrq'); if (!box) return;
-  const {data, error} = await sb.from('change_request').select('*').order('requested_at', {ascending: false}).limit(10);
+  const {data, error} = await sb.from('change_request').select('*').order('requested_at', {ascending: false}).limit(50);
   if (error) return box.textContent = 'Your requests could not be loaded.';
   if (!data.length) return box.textContent = 'You have not sent any requests yet.';
-  box.innerHTML = data.map(r => `<div class="d-flex flex-wrap align-items-center gap-2 py-2 border-top"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(recName(r.table_name, r.action === 'insert' ? r.payload : r.previous))}</span><span class="ms-auto d-flex align-items-center gap-2"><span class="chip chip-${r.status}">${cap(r.status)}</span><span class="text-muted">${esc(stamp(r.decided_at || r.requested_at))}</span></span></div>`).join('');
+  const hid = hiddenReqs(), shown = data.filter(r => !hid.includes(String(r.request_id))).slice(0, 10);
+  if (!shown.length) return box.textContent = 'No requests to show.';
+  box.innerHTML = shown.map(r => `<div class="d-flex flex-wrap align-items-center gap-2 py-2 border-top"><span class="chip chip-${r.action}">${ACT[r.action]}</span><b>${esc(cap(r.table_name))}</b><span class="text-muted">${esc(recName(r.table_name, r.action === 'insert' ? r.payload : r.previous))}</span><span class="ms-auto d-flex align-items-center gap-2"><span class="chip chip-${r.status}">${cap(r.status)}</span><span class="text-muted">${esc(stamp(r.decided_at || r.requested_at))}</span><button type="button" class="btn-close req-x" data-hide="${r.request_id}" aria-label="Remove from my list" title="Remove from my list"></button></span></div>`).join('');
+  box.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => {
+    try { localStorage.setItem(hiddenKey(), JSON.stringify([...hiddenReqs(), String(b.dataset.hide)])); } catch (e) {}
+    b.closest('.border-top').remove();
+    if (!box.querySelector('[data-hide]')) myRequests(); // refill from older requests / show empty message
+  });
 }
 
 // ---------- accounts (administrator only) ----------
@@ -372,7 +427,7 @@ async function exportCsv() {
     const res = await fetch('api/export.php', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-User-Token': session?.access_token || ''}, body: JSON.stringify({report: s.k, from: s.a, to: s.b})});
     if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || 'Export failed.'); }
     const url = URL.createObjectURL(await res.blob()), link = document.createElement('a');
-    link.href = url; link.download = `ais-${s.k}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
+    link.href = url; link.download = `cultiva-${s.k}-${new Date().toISOString().slice(0, 10)}.csv`; link.click(); URL.revokeObjectURL(url);
     flash('CSV file downloaded.');
   } catch (e) { flash(e.message || 'Export failed.', 'danger'); }
   btn.disabled = false;
@@ -389,7 +444,7 @@ async function run() {
     const g = {}; data.forEach(x => { const o = g[x.crop_name] ??= {k:x.crop_name, n:0, q:0, v:0}; o.n++; o.q += +x.quantity_kg; o.v += +x.estimated_value; });
     rows = Object.values(g); rows.push(rows.reduce((t, x) => ({k:'Total', n:t.n + x.n, q:t.q + x.q, v:t.v + x.v}), {k:'Total', n:0, q:0, v:0}));
   }
-  $('#rr').innerHTML = `<div class="table-responsive"><table class="table table-striped"><thead><tr>${r.cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map((x, i) => `<tr${r.g && i === rows.length - 1 ? ' class="fw-bold"' : ''}>${r.cols.map(c => `<td>${cellHtml(c, x)}</td>`).join('')}</tr>`).join('') : `<tr><td class="text-muted" colspan="9">No records found for these dates.</td></tr>`}</tbody></table></div>
+  $('#rr').innerHTML = `<div class="table-responsive"><table class="table table-hover"><thead><tr>${r.cols.map(c => `<th>${c[0]}</th>`).join('')}</tr></thead><tbody>${rows.length ? rows.map((x, i) => `<tr${r.g && i === rows.length - 1 ? ' class="fw-bold"' : ''}>${r.cols.map(c => `<td>${cellHtml(c, x)}</td>`).join('')}</tr>`).join('') : `<tr><td class="text-muted" colspan="9">No records found for these dates.</td></tr>`}</tbody></table></div>
     <small class="text-muted">${r.g ? Math.max(rows.length - 1, 0) + ' crops' : rows.length + ' rows'}</small>`;
 }
 
@@ -432,7 +487,8 @@ function startWatch() { // every 45 s: still a member? role changed? new request
 async function refreshBadge() {
   const b = $('#rqn'); if (!b) return;
   if (!isApprover()) return b.classList.add('d-none');
-  const {count} = await sb.from('change_request').select('request_id', {count: 'exact', head: true}).eq('status', 'pending');
+  const {data: pend} = await sb.from('change_request').select('request_id,table_name,closed').eq('status', 'pending').limit(5000);
+  const count = (pend || []).filter(x => MOD[x.table_name] && !isClosed(x)).length;
   b.textContent = count || ''; b.classList.toggle('d-none', !count);
 }
 
